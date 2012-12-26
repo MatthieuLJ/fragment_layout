@@ -4,10 +4,10 @@ import android.os.Bundle;
 import android.support.v4.app.*;
 import android.support.v4.view.PagerAdapter;
 import android.support.v4.view.ViewPager;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.FrameLayout;
 
 public class TestActivity extends FragmentActivity {
     /**
@@ -15,6 +15,7 @@ public class TestActivity extends FragmentActivity {
      */
 
     private Fragment fragments[] = new TestFragment[3];
+    private Fragment stacker;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -22,23 +23,27 @@ public class TestActivity extends FragmentActivity {
         //setContentView(R.layout.main);
         setContentView(R.layout.main_large);
 
-        if (savedInstanceState != null) {
-            fragments[0] = getSupportFragmentManager().getFragment(savedInstanceState, "fragment0");
-            fragments[1] = getSupportFragmentManager().getFragment(savedInstanceState, "fragment1");
-            fragments[2] = getSupportFragmentManager().getFragment(savedInstanceState, "fragment2");
+        ViewPager mPager = (ViewPager)findViewById(R.id.main_viewpager);
+        ViewPager mLargePager = (ViewPager)findViewById(R.id.main_viewpager_large);
 
+        if (savedInstanceState != null) {
+            if (mPager != null) {
+                fragments[0] = getSupportFragmentManager().getFragment(savedInstanceState, "fragment0");
+                fragments[1] = getSupportFragmentManager().getFragment(savedInstanceState, "fragment1");
+            }
+            if (mLargePager != null) {
+                stacker = getSupportFragmentManager().getFragment(savedInstanceState, "stacker");
+            }
+            fragments[2] = getSupportFragmentManager().getFragment(savedInstanceState, "fragment2");
         } else {
             for (int i=0; i<3; i++)
                 fragments[i] = new TestFragment(i);
         }
 
-        ViewPager mPager = (ViewPager)findViewById(R.id.main_viewpager);
         if (mPager != null) {
             TestFragmentAdapter mAdapter = new TestFragmentAdapter(getSupportFragmentManager(), 3);
             mPager.setAdapter(mAdapter);
-        }
-        ViewPager mLargePager = (ViewPager)findViewById(R.id.main_viewpager_large);
-        if (mLargePager != null) {
+        } else if (mLargePager != null) {
             TestFragmentAdapterLarge mAdapter = new TestFragmentAdapterLarge(this);
             mLargePager.setAdapter(mAdapter);
         }
@@ -47,20 +52,33 @@ public class TestActivity extends FragmentActivity {
     @Override
     protected void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
-        try {
-            getSupportFragmentManager().putFragment(outState, "fragment0", fragments[0]);
-        } catch (IllegalStateException e) {}
-        if (fragments[1] != null) {
-            try {
-                getSupportFragmentManager().putFragment(outState, "fragment1", fragments[1]);
-            } catch (IllegalStateException e) {}
+        ViewPager mPager = (ViewPager)findViewById(R.id.main_viewpager);
+        ViewPager mLargePager = (ViewPager)findViewById(R.id.main_viewpager_large);
+
+        if (mPager != null) {
+            if (fragments[0] != null) {
+                try {
+                    getSupportFragmentManager().putFragment(outState, "fragment0", fragments[0]);
+                } catch (IllegalStateException e) {}
+            }
+            if (fragments[1] != null) {
+                try {
+                    getSupportFragmentManager().putFragment(outState, "fragment1", fragments[1]);
+                } catch (IllegalStateException e) {}
+            }
+        }
+        if (mLargePager != null) {
+            if (stacker != null) {
+                try {
+                    getSupportFragmentManager().putFragment(outState, "stacker", stacker);
+                } catch (IllegalStateException e) {}
+            }
         }
         if (fragments[2] != null) {
             try {
                 getSupportFragmentManager().putFragment(outState, "fragment2", fragments[2]);
             } catch (IllegalStateException e) {}
         }
-
     }
 
     class TestFragmentAdapter extends FragmentPagerAdapter {
@@ -95,40 +113,38 @@ public class TestActivity extends FragmentActivity {
             FragmentManager fm = mContext.getSupportFragmentManager();
             FragmentTransaction ft = fm.beginTransaction();
             if (position == 0) {
-                ft.remove((Fragment) container.findViewById(R.id.top_fragment).getTag(R.id.fragment_tag));
-                ft.remove((Fragment) container.findViewById(R.id.bottom_fragment).getTag(R.id.fragment_tag));
+                ft.remove(stacker);
             } else  { // (position == 1)
-                ft.remove((Fragment) container.getTag(R.id.fragment_tag));
+                ft.remove(fragments[2]);
             }
             ft.commit();
         }
 
         @Override
         public Object instantiateItem(ViewGroup container, int position) {
-            View res;
-            LayoutInflater inflater = mContext.getLayoutInflater();
+            Fragment res;
             FragmentManager fm = mContext.getSupportFragmentManager();
             FragmentTransaction ft = fm.beginTransaction();
+
             if (position == 0) {
-                res = inflater.inflate(R.layout.fragment_stack, container, false);
-                Fragment top = fragments[0];
-                ft.add(R.id.top_fragment, top);
-                res.findViewById(R.id.top_fragment).setTag(R.id.fragment_tag, top);
-
-                Fragment bottom = fragments[1];
-                ft.add(R.id.bottom_fragment, bottom);
-                res.findViewById(R.id.bottom_fragment).setTag(R.id.fragment_tag, bottom);
-
+                if (stacker == null) {
+                    stacker = new FragmentStacker(fragments[0], fragments[1]);
+                    ft.add(container.getId(), stacker);
+                }
+                else {
+                    ft.attach(stacker);
+                }
+                res = stacker;
             } else  { // (position == 1)
-                res = new FrameLayout(mContext);
-                res.setId(R.id.second_page);
                 Fragment second_page = fragments[2];
-                ft.add(R.id.second_page, second_page);
-                res.setTag(R.id.fragment_tag, second_page);
+                if (fm.findFragmentByTag("2") == null)
+                    ft.add(container.getId(), second_page, "2");
+                else
+                    ft.attach(second_page);
+                res = second_page;
             }
 
             ft.commit();
-            container.addView(res);
             return res;
         }
 
@@ -139,8 +155,7 @@ public class TestActivity extends FragmentActivity {
 
         @Override
         public boolean isViewFromObject(View view, Object o) {
-            return view==o;
+            return ((Fragment)o).getView()==view;
         }
     }
-
 }
